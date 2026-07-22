@@ -39,7 +39,7 @@ const PORT = process.env.PORT || 3000;
 
 async function bootstrap() {
   await connectDB();
-  await sequelize.sync({ alter: true });
+  await sequelize.authenticate();
   app.listen(PORT, () => logger.info(`API running on port ${PORT}`));
 }
 
