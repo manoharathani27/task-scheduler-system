@@ -1,0 +1,76 @@
+version: '3.8'
+
+# WHY DOCKER COMPOSE:
+# Runs all services (API, Worker, C++ Engine, PostgreSQL, Redis)
+# with a single command. No manual setup needed.
+# Each service runs in its own container — mirrors production.
+
+services:
+  # Node.js REST API
+  api:
+    build:
+      context: ./api
+      dockerfile: ../infrastructure/docker/Dockerfile.api
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      DB_HOST: postgres
+      REDIS_HOST: redis
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID}
+      GCP_PUBSUB_TOPIC: ${GCP_PUBSUB_TOPIC}
+      JWT_SECRET: ${JWT_SECRET}
+    env_file: .env
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  # GCP Pub/Sub Worker
+  worker:
+    build:
+      context: ./worker
+      dockerfile: ../infrastructure/docker/Dockerfile.worker
+    environment:
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID}
+      GCP_PUBSUB_SUBSCRIPTION: ${GCP_PUBSUB_SUBSCRIPTION}
+      API_BASE_URL: http://api:3000
+    env_file: .env
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # C++ Scheduler Engine
+  cpp-engine:
+    build:
+      context: ./cpp-engine
+      dockerfile: ../infrastructure/docker/Dockerfile.cpp
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: task_scheduler_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: yourpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

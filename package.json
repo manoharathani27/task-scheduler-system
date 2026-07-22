@@ -1,0 +1,11 @@
+{
+  "name": "distributed-task-scheduler",
+  "version": "1.0.0",
+  "description": "Distributed Task Scheduler with C++ engine, Node.js API, GCP Pub/Sub, and CI/CD",
+  "scripts": {
+    "start:api": "cd api && node src/app.js",
+    "dev:api": "cd api && nodemon src/app.js",
+    "start:worker": "cd worker && node src/worker.js",
+    "build:cpp": "cd cpp-engine && mkdir -p build && cd build && cmake .. && make"
+  }
+}
