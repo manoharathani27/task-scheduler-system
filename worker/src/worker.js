@@ -25,7 +25,7 @@ const logger = winston.createLogger({
 
 const pubSubClient = new PubSub({ projectId: process.env.GCP_PROJECT_ID });
 const SUBSCRIPTION_NAME = process.env.GCP_PUBSUB_SUBSCRIPTION || 'task-scheduler-subscription';
-const API_BASE_URL = process.env.API_BASE_URL || 'http://api:3000';
+const API_BASE_URL = process.env.API_BASE_URL;
 
 // Track processed executionIds in memory for short-term dedup
 // WHY: Pub/Sub can redeliver same message within seconds.
