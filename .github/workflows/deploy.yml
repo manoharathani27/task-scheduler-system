@@ -1,37 +1,27 @@
-name: CI/CD — Build, Test & Deploy to GCP
+name: CI/CD - Build, Test & Deploy to GCP
 
-# WHY THIS TRIGGER:
-# Push to main → full deploy (production)
-# Pull request → only test (no deploy)
-# This protects production from broken code.
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
+concurrency:
+  group: production
+  cancel-in-progress: true
+
 env:
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  GCP_REGION: asia-south1              # Mumbai — closest to Bangalore
+  GCP_REGION: asia-south1
   ARTIFACT_REGISTRY: asia-south1-docker.pkg.dev
-  REPOSITORY: task-scheduler
+  REPOSITORY: scheduler-repo
 
-# WHY SEPARATE JOBS:
-# Jobs run in parallel where possible.
-# test-api and build-cpp run simultaneously → faster pipeline.
-# deploy only runs after both pass — safety gate.
 jobs:
-
-  # ============================================================
-  # JOB 1: Test Node.js API
-  # WHY: Catch bugs before they reach production
-  # ============================================================
   test-api:
     name: Test API
     runs-on: ubuntu-latest
+
     services:
-      # WHY SERVICE CONTAINERS: Tests need a real PostgreSQL.
-      # GitHub Actions spins up a temporary DB just for this job.
       postgres:
         image: postgres:15
         env:
@@ -47,17 +37,15 @@ jobs:
           --health-retries 5
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: 20
+          cache: npm
           cache-dependency-path: api/package-lock.json
 
-      - name: Install API dependencies
+      - name: Install dependencies
         working-directory: api
         run: npm ci
 
@@ -73,107 +61,81 @@ jobs:
           JWT_SECRET: test_secret
         run: npm test
 
-  # ============================================================
-  # JOB 2: Build & validate C++ engine
-  # WHY: Catch C++ compile errors early
-  # ============================================================
   build-cpp:
     name: Build C++ Engine
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install build tools
-        run: sudo apt-get update && sudo apt-get install -y cmake g++ make
+      - run: sudo apt-get update && sudo apt-get install -y cmake g++ make
 
-      - name: Build C++ engine
+      - name: Build
         working-directory: cpp-engine
         run: |
           mkdir -p build
           cd build
           cmake .. -DCMAKE_BUILD_TYPE=Release
-          make -j4
+          make -j$(nproc)
 
-      - name: Verify binary exists
-        run: ls -la cpp-engine/build/task-scheduler-engine
+      - run: test -f cpp-engine/build/task-scheduler-engine
 
-  # ============================================================
-  # JOB 3: Deploy to GCP (only on push to main)
-  # WHY: Only deploy tested, merged code
-  # ============================================================
   deploy:
-    name: Deploy to GCP Cloud Run
+    name: Deploy
     runs-on: ubuntu-latest
-    needs: [test-api, build-cpp]  # Wait for both jobs to pass
+    timeout-minutes: 30
+    needs: [test-api, build-cpp]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
+    permissions:
+      contents: read
+      id-token: write
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # WHY WORKLOAD IDENTITY FEDERATION:
-      # More secure than storing GCP service account JSON as a secret.
-      # GitHub OIDC token is exchanged for a short-lived GCP token.
-      # No long-lived credentials stored anywhere.
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+      - uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
 
-      - name: Setup gcloud CLI
-        uses: google-github-actions/setup-gcloud@v2
+      - uses: google-github-actions/setup-gcloud@v2
 
-      # WHY ARTIFACT REGISTRY (not Docker Hub):
-      # Private registry inside GCP — no public exposure.
-      # Cloud Run pulls images faster from Artifact Registry (same network).
-      - name: Configure Docker for Artifact Registry
-        run: |
-          gcloud auth configure-docker ${{ env.ARTIFACT_REGISTRY }} --quiet
+      - run: gcloud auth configure-docker ${{ env.ARTIFACT_REGISTRY }} --quiet
 
-      - name: Build & Push API image
+      - name: Build API image
         run: |
           docker build \
-            -f infrastructure/docker/Dockerfile.api \
-            -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/api:${{ github.sha }} \
-            -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/api:latest \
-            ./api
+          -f infrastructure/docker/Dockerfile.api \
+          -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/api:${{ github.sha }} \
+          -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/api:latest \
+          ./api
+
+      - name: Push API image
+        run: |
           docker push ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/api:${{ github.sha }}
           docker push ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/api:latest
 
-      - name: Build & Push Worker image
+      - name: Build Worker image
         run: |
           docker build \
-            -f infrastructure/docker/Dockerfile.worker \
-            -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/worker:${{ github.sha }} \
-            -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/worker:latest \
-            ./worker
+          -f infrastructure/docker/Dockerfile.worker \
+          -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/worker:${{ github.sha }} \
+          -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/worker:latest \
+          ./worker
+
+      - name: Push Worker image
+        run: |
           docker push ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/worker:${{ github.sha }}
           docker push ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/worker:latest
 
-      - name: Build & Push C++ Engine image
-        run: |
-          docker build \
-            -f infrastructure/docker/Dockerfile.cpp \
-            -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/cpp-engine:${{ github.sha }} \
-            -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/cpp-engine:latest \
-            ./cpp-engine
-          docker push ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/cpp-engine:${{ github.sha }}
-          docker push ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/cpp-engine:latest
-
-      # WHY CLOUD RUN:
-      # Serverless containers — pay only when requests come in.
-      # Auto-scales from 0 to 100+ instances based on traffic.
-      # Perfect for a scheduler API that has variable load.
-      - name: Deploy API to Cloud Run
+      - name: Deploy API
         run: |
           gcloud run deploy task-scheduler-api \
             --image=${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/api:${{ github.sha }} \
             --region=${{ env.GCP_REGION }} \
             --platform=managed \
             --allow-unauthenticated \
-            --port=3000 \
             --memory=512Mi \
             --cpu=1 \
             --min-instances=0 \
@@ -181,7 +143,12 @@ jobs:
             --set-env-vars="NODE_ENV=production,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }}" \
             --set-secrets="DB_PASSWORD=db-password:latest,JWT_SECRET=jwt-secret:latest"
 
-      - name: Deploy Worker to Cloud Run
+      - name: Get API URL
+        id: api
+        run: |
+          echo "url=$(gcloud run services describe task-scheduler-api --region=${{ env.GCP_REGION }} --format='value(status.url)')" >> $GITHUB_OUTPUT
+
+      - name: Deploy Worker
         run: |
           gcloud run deploy task-scheduler-worker \
             --image=${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/worker:${{ github.sha }} \
@@ -192,25 +159,14 @@ jobs:
             --cpu=1 \
             --min-instances=1 \
             --max-instances=5 \
-            --set-env-vars="GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }}"
+            --set-env-vars="GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},API_BASE_URL=${{ steps.api.outputs.url }}"
 
-      - name: Deploy C++ Engine to Cloud Run
+      - name: Verify API
         run: |
-          gcloud run deploy task-scheduler-cpp \
-            --image=${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/cpp-engine:${{ github.sha }} \
-            --region=${{ env.GCP_REGION }} \
-            --platform=managed \
-            --no-allow-unauthenticated \
-            --memory=256Mi \
-            --cpu=1 \
-            --min-instances=1 \
-            --max-instances=3
+          curl --fail "${{ steps.api.outputs.url }}/health"
 
-      - name: Get API URL and notify
+      - name: Deployment Summary
         run: |
-          API_URL=$(gcloud run services describe task-scheduler-api \
-            --region=${{ env.GCP_REGION }} \
-            --format='value(status.url)')
-          echo "✅ Deployed successfully!"
-          echo "API URL: $API_URL"
+          echo "Deployment successful"
+          echo "API: ${{ steps.api.outputs.url }}"
           echo "Commit: ${{ github.sha }}"
