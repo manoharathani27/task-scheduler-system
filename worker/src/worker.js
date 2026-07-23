@@ -147,6 +147,9 @@ async function startWorker() {
   logger.info(`Worker listening on subscription: ${SUBSCRIPTION_NAME}`);
   logger.info('Waiting for tasks...');
 }
+app.listen(PORT, () => {
+  logger.info(`Worker HTTP server running on port ${PORT}`);
+});
 
 startWorker().catch(err => {
   logger.error('Worker failed to start:', err);
