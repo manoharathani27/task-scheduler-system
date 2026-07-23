@@ -45,11 +45,13 @@ int main() {
         notifier.notifyStarted(task);
 
         // Select strategy based on task type (Strategy Pattern in action)
-        std::shared_ptr<IExecutionStrategy> strategy =
-            (task.strategy == ExecutionStrategy::HTTP_CALLBACK)
-                ? httpStrategy
-                : pubsubStrategy;
+        std::shared_ptr<IExecutionStrategy> strategy;
 
+        if (task.strategy == ExecutionStrategy::HTTP_CALLBACK) {
+            strategy = std::static_pointer_cast<IExecutionStrategy>(httpStrategy);
+        } else {
+            strategy = std::static_pointer_cast<IExecutionStrategy>(pubsubStrategy);
+        }
         // Wrap in Command (Command Pattern)
         ExecuteTaskCommand cmd(task, strategy);
         bool success = cmd.execute();
@@ -65,7 +67,7 @@ int main() {
     try {
         Task t1 = TaskFactory::createHttpTask(
             "Health Check",
-            "*/1 * * * *",           // Every minute
+            "* * * * *",           // Every minute
             "http://api:3000/health",
             "{}",
             "system"
