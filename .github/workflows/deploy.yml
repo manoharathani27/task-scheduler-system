@@ -136,6 +136,7 @@ jobs:
             --region=${{ env.GCP_REGION }} \
             --platform=managed \
             --allow-unauthenticated \
+            --service-account=github-actions@task-scheduler-system.iam.gserviceaccount.com \
             --memory=512Mi \
             --cpu=1 \
             --min-instances=0 \
@@ -155,6 +156,7 @@ jobs:
             --region=${{ env.GCP_REGION }} \
             --platform=managed \
             --no-allow-unauthenticated \
+            --service-account=github-actions@task-scheduler-system.iam.gserviceaccount.com \
             --memory=256Mi \
             --cpu=1 \
             --min-instances=1 \
