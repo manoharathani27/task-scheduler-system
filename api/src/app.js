@@ -38,14 +38,21 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 
 async function bootstrap() {
-  await connectDB();
-  await sequelize.authenticate();
-  app.listen(PORT, () => logger.info(`API running on port ${PORT}`));
+  // Start the HTTP server FIRST
+  app.listen(PORT, () => {
+    logger.info(`API running on port ${PORT}`);
+  });
+
+  // Connect to database AFTER server starts
+  try {
+    await connectDB();
+    await sequelize.sync({ alter: true });
+    logger.info("Database connected successfully");
+  } catch (err) {
+    logger.error("Database connection failed:", err);
+  }
 }
 
-bootstrap().catch(err => {
-  logger.error('Startup failed:', err);
-  process.exit(1);
-});
+bootstrap();
 
 module.exports = app;
