@@ -5,6 +5,7 @@
 #include <functional>
 #include <unordered_map>
 #include <vector>
+#include <mutex>
 
 // ============================================================
 // PATTERN 1: STRATEGY PATTERN — Execution Strategy

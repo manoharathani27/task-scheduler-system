@@ -5,6 +5,7 @@
 #include <random>
 #include <iomanip>
 #include <chrono>
+#include <mutex>
 
 // ============================================================
 // STRATEGY PATTERN IMPLEMENTATIONS
