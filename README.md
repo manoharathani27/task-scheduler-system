@@ -1,231 +1,465 @@
-# Distributed Task Scheduler
+# 🚀 Distributed Task Scheduler
 
-A production-grade distributed task scheduler featuring a **C++ scheduling engine** with min-heap priority queue and 5 design patterns, a **Node.js REST API**, **GCP Pub/Sub** for reliable task delivery, and a **GitHub Actions CI/CD pipeline** deploying to **GCP Cloud Run**.
+![CI/CD](https://github.com/manoharathani27/task-scheduler-system/actions/workflows/deploy.yml/badge.svg)
+![C++](https://img.shields.io/badge/C++-17-blue)
+![Node.js](https://img.shields.io/badge/Node.js-20-green)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-blue)
+![Docker](https://img.shields.io/badge/Docker-Ready-2496ED)
+![Google Cloud](https://img.shields.io/badge/Google%20Cloud-Cloud%20Run-orange)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+A **production-grade distributed task scheduler** built using **C++**, **Node.js**, and **Google Cloud Platform**.
+
+The system combines a **high-performance C++ scheduling engine**, **Node.js microservices**, **Google Cloud Pub/Sub**, **Cloud SQL**, and a fully automated **GitHub Actions CI/CD pipeline** to provide reliable, scalable, fault-tolerant task scheduling.
 
 ---
 
-## Architecture
+# 📌 Features
+
+- JWT Authentication
+- RESTful Task Management API
+- Cron Expression Scheduling
+- High-performance C++ Min Heap Scheduler
+- HTTP Callback Execution
+- Google Cloud Pub/Sub Integration
+- Retry Mechanism
+- Idempotent Task Execution
+- Execution History
+- PostgreSQL Storage
+- Google Cloud SQL Integration
+- Dockerized Microservices
+- Google Cloud Run Deployment
+- Secret Manager Integration
+- GitHub Actions CI/CD
+- Production Ready Architecture
+
+---
+
+# 🏗 System Architecture
 
 ```
-User/Service
+                        +----------------------+
+                        |      Client/User     |
+                        +----------+-----------+
+                                   |
+                                   |
+                           REST API Requests
+                                   |
+                                   ▼
+                   +-----------------------------+
+                   |      Node.js REST API       |
+                   |      Google Cloud Run       |
+                   +-------------+---------------+
+                                 |
+                                 |
+                           Publish Tasks
+                                 |
+                                 ▼
+                   +-----------------------------+
+                   |      Google Pub/Sub         |
+                   +-------------+---------------+
+                                 |
+                     Pull Messages
+                                 |
+             +-------------------+------------------+
+             |                                      |
+             ▼                                      ▼
++--------------------------+          +-----------------------------+
+|     Worker Service       |          |     C++ Scheduling Engine   |
+|    Google Cloud Run      |          |     Min Heap Scheduler      |
++-------------+------------+          +-------------+---------------+
+              |                                      |
+              +-------------------+------------------+
+                                  |
+                                  ▼
+                    +------------------------------+
+                    | PostgreSQL (Cloud SQL)       |
+                    | Task Registry & Execution    |
+                    +------------------------------+
+```
+
+---
+
+# ☁️ Cloud Architecture
+
+```
+Developer
      │
      ▼
-┌─────────────────────┐
-│  Node.js REST API   │  ← Create, pause, resume, delete tasks
-│  (GCP Cloud Run)    │
-└────────┬────────────┘
-         │ Publish to
-         ▼
-┌─────────────────────┐
-│  GCP Pub/Sub Topic  │  ← At-least-once message delivery
-└────────┬────────────┘
-         │ Subscribe
-    ┌────┴─────┐
-    ▼          ▼
-┌────────┐ ┌──────────────────┐
-│ Worker │ │ C++ Engine       │
-│(Node)  │ │ Min-Heap         │  ← Picks next task O(1)
-│Cloud   │ │ Scheduler        │  ← Reschedules O(log n)
-│Run     │ │ (GCP Cloud Run)  │
-└────────┘ └──────────────────┘
-         │
-         ▼
-┌─────────────────────┐
-│  PostgreSQL          │  ← Job registry + execution logs
-│  (GCP Cloud SQL)    │
-└─────────────────────┘
+GitHub Repository
+     │
+     ▼
+GitHub Actions
+     │
+     ▼
+Artifact Registry
+     │
+     ├────────────► API (Cloud Run)
+     │                     │
+     │                     ▼
+     │                Cloud SQL
+     │
+     └────────────► Worker (Cloud Run)
+                           │
+                           ▼
+                       Pub/Sub
 ```
 
 ---
 
-## Why Each Technology
+# 💻 Tech Stack
 
-| Technology | Why We Use It |
-|---|---|
-| **C++ Min-Heap** | O(1) next-task lookup, O(log n) insert — fastest possible scheduler |
-| **GCP Pub/Sub** | At-least-once delivery — no task lost even if worker crashes |
-| **GCP Cloud Run** | Serverless containers — auto-scales, pay per request |
-| **GCP Cloud SQL** | Managed PostgreSQL — automatic backups and failover |
-| **GCP Artifact Registry** | Private Docker registry — faster pulls from Cloud Run |
-| **GCP Secret Manager** | Secure secrets — never in code or env files |
-| **GitHub Actions** | CI/CD — automated test → build → deploy on every push |
-| **Docker Multi-Stage** | Smaller images — faster Cloud Run cold starts |
+## Backend
 
----
+- Node.js
+- Express.js
+- Sequelize ORM
+- JWT Authentication
+- PostgreSQL
 
-## Design Patterns (C++ Engine)
+## Scheduler Engine
 
-| Pattern | Where | Why |
-|---|---|---|
-| **Singleton** | MinHeapScheduler, TaskRegistry | One shared instance — prevents duplicate execution |
-| **Strategy** | HttpCallbackStrategy, PubSubStrategy | Swap execution method without changing scheduler |
-| **Observer** | DatabaseObserver, LogObserver | Decouple task completion from side effects |
-| **Factory** | TaskFactory | Complex task creation with validation in one place |
-| **Command** | ExecuteTaskCommand | Encapsulate execution for retry, undo, logging |
+- C++17
+- STL
+- Min Heap Priority Queue
+- Custom Cron Parser
+- Object-Oriented Design
 
----
+## Cloud
 
-## High Level Design Concepts
+- Google Cloud Run
+- Google Cloud SQL
+- Google Pub/Sub
+- Google Secret Manager
+- Google Artifact Registry
 
-**At-least-once delivery** — GCP Pub/Sub redelivers if worker doesn't ACK within deadline. Worker uses idempotency keys (executionId) to skip duplicates.
+## DevOps
 
-**Fault tolerance** — If C++ engine crashes, it reloads pending tasks from PostgreSQL on restart. No task is lost.
-
-**Horizontal scaling** — Multiple worker instances subscribe to the same Pub/Sub subscription. Messages are load-balanced across workers automatically.
-
-**Idempotency** — Every task execution gets a unique `executionId = taskId + timestamp`. Database has a unique constraint on it — even if a message is delivered twice, the second insert fails silently.
+- Docker
+- Docker Compose
+- GitHub Actions
+- Workload Identity Federation
 
 ---
 
-## Project Structure
+# 🎯 Design Patterns Used
+
+| Pattern | Purpose |
+|----------|---------|
+| Singleton | Scheduler & Registry instance management |
+| Strategy | HTTP Callback / PubSub execution |
+| Observer | Logging & Database notifications |
+| Factory | Task creation and validation |
+| Command | Task execution, retry and undo |
+
+---
+
+# ⚡ High Level Design
+
+### Min Heap Scheduler
+
+- O(1) next task lookup
+- O(log n) insertion
+- O(log n) deletion
+
+---
+
+### At-Least-Once Delivery
+
+Google Pub/Sub guarantees messages are delivered even if workers crash.
+
+---
+
+### Idempotency
+
+Each execution receives
 
 ```
+executionId = taskId + timestamp
+```
+
+Duplicate executions are safely ignored.
+
+---
+
+### Horizontal Scaling
+
+Multiple Worker instances subscribe to the same Pub/Sub subscription.
+
+Cloud Run automatically scales based on traffic.
+
+---
+
+### Fault Tolerance
+
+If a worker crashes
+
+- Task remains inside Pub/Sub
+- Another worker automatically processes it
+
+No task is lost.
+
+---
+
+# 🔐 Security
+
+- JWT Authentication
+- Password Hashing
+- Google Secret Manager
+- Workload Identity Federation
+- Secrets never stored inside source code
+- Secure Cloud SQL Connection
+
+---
+
+# 📊 Performance
+
+- O(1) Task Peek
+- O(log n) Scheduling
+- Automatic Cloud Run Scaling
+- Production Ready Docker Images
+- Reliable Pub/Sub Messaging
+- Efficient Connection Pooling
+
+---
+
+# 📂 Project Structure
+
+```text
 task-scheduler/
-├── cpp-engine/                  ← C++ scheduling engine
-│   ├── include/
-│   │   ├── core/
-│   │   │   ├── Task.h           ← Core domain entity
-│   │   │   ├── CronParser.h     ← Cron expression parser
-│   │   │   └── MinHeapScheduler.h
-│   │   └── patterns/
-│   │       └── DesignPatterns.h ← All 5 patterns declared
+│
+├── api/
 │   ├── src/
-│   │   ├── core/
-│   │   │   ├── CronParser.cpp
-│   │   │   └── MinHeapScheduler.cpp
-│   │   ├── patterns/
-│   │   │   └── DesignPatterns.cpp
-│   │   └── main.cpp
-│   └── CMakeLists.txt
-├── api/                         ← Node.js REST API
-│   └── src/
-│       ├── config/              ← DB, PubSub, Logger
-│       ├── controllers/         ← Auth, Task, Execution
-│       ├── middleware/          ← JWT auth
-│       ├── models/              ← Task, ExecutionLog, User
-│       └── routes/
-├── worker/                      ← GCP Pub/Sub subscriber
-│   └── src/worker.js
+│   │   ├── config/
+│   │   ├── controllers/
+│   │   ├── middleware/
+│   │   ├── models/
+│   │   ├── routes/
+│   │   └── app.js
+│   ├── package.json
+│   └── Dockerfile
+│
+├── worker/
+│   ├── src/
+│   │   └── worker.js
+│   ├── package.json
+│   └── Dockerfile
+│
+├── cpp-engine/
+│   ├── include/
+│   ├── src/
+│   ├── CMakeLists.txt
+│   └── build/
+│
 ├── infrastructure/
-│   ├── docker/                  ← Dockerfiles (API, Worker, C++)
-│   └── gcp/setup-gcp.sh        ← One-time GCP setup script
-├── .github/workflows/
-│   └── deploy.yml               ← CI/CD pipeline
-└── docker-compose.yml           ← Local development
+│   ├── docker/
+│   └── gcp/
+│
+├── .github/
+│   └── workflows/
+│       └── deploy.yml
+│
+├── docker-compose.yml
+└── README.md
 ```
 
 ---
 
-## Getting Started
+# 🚀 Getting Started
 
-### Prerequisites
-- Node.js v18+, Docker, GCP Account, `gcloud` CLI
+## Prerequisites
 
-### 1. Clone
+- Node.js 20+
+- Docker
+- Google Cloud SDK
+- Git
+- CMake
+- C++17 Compiler
+
+---
+
+## Clone Repository
+
 ```bash
-git clone https://github.com/manoharathani27/task-scheduler.git
-cd task-scheduler
+git clone https://github.com/manoharathani27/task-scheduler-system.git
+
+cd task-scheduler-system
 ```
 
-### 2. Setup GCP (run once)
+---
+
+## Install Dependencies
+
+### API
+
 ```bash
-chmod +x infrastructure/gcp/setup-gcp.sh
-./infrastructure/gcp/setup-gcp.sh YOUR_GCP_PROJECT_ID
+cd api
+
+npm install
 ```
 
-### 3. Configure environment
+---
+
+### Worker
+
 ```bash
-cp .env.example .env
-# Fill in GCP_PROJECT_ID, DB credentials, JWT_SECRET
+cd worker
+
+npm install
 ```
 
-### 4. Run locally
+---
+
+### C++ Engine
+
+```bash
+cd cpp-engine
+
+mkdir build
+
+cd build
+
+cmake ..
+
+make
+```
+
+---
+
+## Run Locally
+
 ```bash
 docker-compose up --build
 ```
 
-### 5. Setup GitHub Secrets for CI/CD
-In your GitHub repo → Settings → Secrets → Actions:
-```
-GCP_PROJECT_ID          = your-project-id
-GCP_SERVICE_ACCOUNT     = github-actions-sa@your-project.iam.gserviceaccount.com
-GCP_WORKLOAD_IDENTITY_PROVIDER = projects/NUMBER/locations/global/workloadIdentityPools/...
-```
+---
 
-### 6. Deploy
-```bash
-git push origin main
-# GitHub Actions auto-deploys to GCP Cloud Run
+# ☁️ Google Cloud Services Used
+
+- Cloud Run
+- Cloud SQL
+- Pub/Sub
+- Artifact Registry
+- Secret Manager
+- IAM
+- Workload Identity Federation
+
+---
+
+# ⚙️ CI/CD Pipeline
+
+```
+Push to main
+      │
+      ▼
+GitHub Actions
+      │
+      ├──────── Test API
+      │
+      ├──────── Build C++ Engine
+      │
+      ├──────── Build Docker Images
+      │
+      ├──────── Push Images to Artifact Registry
+      │
+      ├──────── Deploy API to Cloud Run
+      │
+      └──────── Deploy Worker to Cloud Run
 ```
 
 ---
 
-## API Reference
+# 📚 REST API
 
-### Auth
-```
-POST /api/auth/register    Register user
-POST /api/auth/login       Login, get JWT
-```
+## Authentication
 
-### Tasks
-```
-POST   /api/tasks          Create task
-GET    /api/tasks          List tasks
-GET    /api/tasks/:id      Get task + recent executions
-PUT    /api/tasks/:id      Update task
-POST   /api/tasks/:id/pause   Pause task
-POST   /api/tasks/:id/resume  Resume task
-DELETE /api/tasks/:id      Delete task
-```
-
-### Executions
-```
-GET  /api/executions           List execution logs
-GET  /api/executions/:id       Get execution detail
-POST /api/executions/record    Record execution result (internal)
-```
+| Method | Endpoint |
+|----------|---------------------------|
+| POST | /api/auth/register |
+| POST | /api/auth/login |
 
 ---
 
-## Example Request
+## Tasks
 
-```json
+| Method | Endpoint |
+|----------|-------------------------|
+| POST | /api/tasks |
+| GET | /api/tasks |
+| GET | /api/tasks/:id |
+| PUT | /api/tasks/:id |
+| DELETE | /api/tasks/:id |
+| POST | /api/tasks/:id/pause |
+| POST | /api/tasks/:id/resume |
+
+---
+
+## Executions
+
+| Method | Endpoint |
+|----------|--------------------------------|
+| GET | /api/executions |
+| GET | /api/executions/:id |
+| POST | /api/executions/record |
+
+---
+
+# 📝 Example Request
+
+```http
 POST /api/tasks
-Authorization: Bearer <token>
+Authorization: Bearer <JWT_TOKEN>
 
 {
   "name": "Daily Report",
   "cronExpression": "0 9 * * 1-5",
   "executionStrategy": "HTTP_CALLBACK",
-  "callbackUrl": "https://your-service.com/reports/generate",
-  "payload": { "type": "daily", "format": "pdf" },
-  "maxRetries": 3
+  "callbackUrl": "https://example.com/report",
+  "payload": {
+      "type":"daily",
+      "format":"pdf"
+  },
+  "maxRetries":3
 }
 ```
 
 ---
 
-## CI/CD Pipeline
+# 📈 Future Improvements
 
-```
-Push to main
-     │
-     ├── test-api (Jest + PostgreSQL)
-     ├── build-cpp (cmake + make)
-     │
-     └── deploy (after both pass)
-           ├── Build Docker images
-           ├── Push to Artifact Registry
-           ├── Deploy API → Cloud Run
-           ├── Deploy Worker → Cloud Run
-           └── Deploy C++ Engine → Cloud Run
-```
+- Kubernetes Deployment
+- Redis Distributed Lock
+- Dead Letter Queue
+- Prometheus Monitoring
+- Grafana Dashboard
+- Multi-region Scheduling
+- Terraform Infrastructure
 
 ---
 
-## Author
+# 🌟 Highlights
+
+- High-performance C++ scheduling engine
+- Distributed microservices architecture
+- Google Cloud native deployment
+- Automated CI/CD using GitHub Actions
+- Dockerized services
+- Fault-tolerant task execution
+- Production-ready architecture
+- Five GoF Design Patterns implemented
+
+---
+
+# 👨‍💻 Author
 
 **Manohar Mahadev Athani**
-- GitHub: [@manoharathani27](https://github.com/manoharathani27)
-- LinkedIn: [manoharathani](https://linkedin.com/in/manoharathani)
+
+GitHub: https://github.com/manoharathani27
+
+LinkedIn: https://www.linkedin.com/in/manoharathani
+
+---
+
+# 📄 License
+
+MIT License
